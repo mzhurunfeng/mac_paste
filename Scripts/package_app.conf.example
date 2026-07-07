@@ -1,0 +1,5 @@
+# Copy this file to Scripts/package_app.conf for local packaging defaults.
+CONFIGURATION="release"
+INSTALL_APP=0
+INSTALL_DIR="/Applications"
+CODESIGN_IDENTITY=""
