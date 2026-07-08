@@ -89,6 +89,16 @@ final class ClipboardStore {
         }
     }
 
+    func deleteItem(id: Int64) throws {
+        try queue.sync {
+            let imagePath = try imagePathForItem(id: id)
+            try deleteItemUnlocked(id: id)
+            if let imagePath, try !imagePathIsReferenced(imagePath) {
+                try? FileManager.default.removeItem(atPath: imagePath)
+            }
+        }
+    }
+
     func fetchItems(searchQuery: String = "", filter: ClipboardFilter = .all, limit: Int = 50, offset: Int = 0) throws -> [ClipboardItem] {
         try queue.sync {
             try fetchItemsUnlocked(searchQuery: searchQuery, filter: filter, limit: limit, offset: offset)
@@ -242,7 +252,7 @@ final class ClipboardStore {
         let images = try imageItemsOldestFirst()
         for image in images {
             guard totalBytes > maxBytes else { break }
-            try deleteItem(id: image.id)
+            try deleteItemUnlocked(id: image.id)
             if try !imagePathIsReferenced(image.path) {
                 try? FileManager.default.removeItem(atPath: image.path)
                 totalBytes = max(0, totalBytes - image.byteSize)
@@ -409,7 +419,7 @@ final class ClipboardStore {
         return total
     }
 
-    private func deleteItem(id: Int64) throws {
+    private func deleteItemUnlocked(id: Int64) throws {
         var statement: OpaquePointer?
         let sql = "DELETE FROM clipboard_items WHERE id = ?"
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
@@ -421,6 +431,25 @@ final class ClipboardStore {
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw StoreError.writeFailed(message: lastErrorMessage)
         }
+    }
+
+    private func imagePathForItem(id: Int64) throws -> String? {
+        var statement: OpaquePointer?
+        let sql = "SELECT image_path FROM clipboard_items WHERE id = ?"
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw StoreError.prepareFailed(message: lastErrorMessage)
+        }
+        defer { sqlite3_finalize(statement) }
+
+        sqlite3_bind_int64(statement, 1, id)
+        let stepResult = sqlite3_step(statement)
+        if stepResult == SQLITE_ROW {
+            return columnText(statement, 0)
+        }
+        guard stepResult == SQLITE_DONE else {
+            throw StoreError.readFailed(message: lastErrorMessage)
+        }
+        return nil
     }
 
     private func imagePathIsReferenced(_ path: String) throws -> Bool {

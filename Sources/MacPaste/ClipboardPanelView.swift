@@ -77,6 +77,7 @@ struct ClipboardPanelView: View {
                                 item: item,
                                 selected: item.id == viewModel.selectedID
                             )
+                            .equatable()
                             .id(item.id)
                             .contentShape(Rectangle())
                             .padding(.horizontal, 8)
@@ -166,9 +167,21 @@ struct ClipboardPanelView: View {
 
     private func information(_ item: ClipboardItem) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("信息")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("信息")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button(role: .destructive) {
+                    viewModel.deleteItem(id: item.id)
+                } label: {
+                    Label("删除", systemImage: "trash")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.borderless)
+            }
 
             InfoRow(label: "来源", value: item.sourceAppName?.isEmpty == false ? item.sourceAppName! : "-")
             InfoRow(label: "内容类型", value: contentTypeValue(item))
@@ -200,11 +213,15 @@ struct ClipboardPanelView: View {
     }
 }
 
-private struct HistoryRow: View {
+private struct HistoryRow: View, Equatable {
     @Environment(\.colorScheme) private var colorScheme
 
     let item: ClipboardItem
     let selected: Bool
+
+    static func == (lhs: HistoryRow, rhs: HistoryRow) -> Bool {
+        lhs.item == rhs.item && lhs.selected == rhs.selected
+    }
 
     var body: some View {
         HStack(spacing: 7) {
@@ -218,12 +235,12 @@ private struct HistoryRow: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
-        .background {
-            if selected {
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(selectionBackground)
-            }
-        }
+        // 始终保留背景层，避免 LazyVStack 复用 cell 时条件视图残留选中态
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(selectionBackground)
+                .opacity(selected ? 1 : 0)
+        )
     }
 
     private var selectionBackground: Color {

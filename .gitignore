@@ -6,3 +6,4 @@ DerivedData/
 *.xcworkspace/xcuserdata/
 Scripts/package_app.conf
 designs/
+dist/

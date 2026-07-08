@@ -96,6 +96,26 @@ final class HistoryViewModel: ObservableObject {
         }
     }
 
+    func deleteItem(id: ClipboardItem.ID) {
+        guard let deletedIndex = items.firstIndex(where: { $0.id == id }) else { return }
+        do {
+            try store.deleteItem(id: id)
+            items.remove(at: deletedIndex)
+            currentOffset = max(0, currentOffset - 1)
+            updateSectionedItems()
+
+            if items.isEmpty {
+                selectedID = nil
+                hasMoreItems = false
+            } else {
+                let nextIndex = min(deletedIndex, items.count - 1)
+                selectedID = items[nextIndex].id
+            }
+        } catch {
+            NSLog("MacPaste delete item failed: \(error.localizedDescription)")
+        }
+    }
+
     func loadNextPageIfNeeded(currentItem item: ClipboardItem) {
         guard hasMoreItems, !isLoadingPage else { return }
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
