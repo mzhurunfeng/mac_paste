@@ -10,7 +10,11 @@ final class HistoryViewModel: ObservableObject {
         didSet { scheduleSearchReload() }
     }
     @Published var filter: ClipboardFilter = .all {
-        didSet { reload(resetPaging: true) }
+        didSet {
+            reload(resetPaging: true)
+            selectFirst()
+            scrollToTopRequest += 1
+        }
     }
     @Published private(set) var isLoadingPage = false
     @Published private(set) var hasMoreItems = true
@@ -37,12 +41,12 @@ final class HistoryViewModel: ObservableObject {
     }
 
     func reload(resetPaging: Bool = false) {
+        invalidatePageLoad()
         do {
             let requestedLimit: Int
             if resetPaging {
                 currentOffset = 0
                 hasMoreItems = true
-                pageLoadToken = UUID()
                 requestedLimit = pageSize
             } else {
                 requestedLimit = max(currentOffset, pageSize)
@@ -96,8 +100,20 @@ final class HistoryViewModel: ObservableObject {
         }
     }
 
+    func toggleFavorite(id: ClipboardItem.ID) {
+        guard let item = items.first(where: { $0.id == id }) else { return }
+        do {
+            try store.setFavorite(id: id, isFavorite: !item.isFavorite)
+            reload()
+        } catch {
+            NSLog("MacPaste update favorite failed: \(error.localizedDescription)")
+        }
+    }
+
     func deleteItem(id: ClipboardItem.ID) {
         guard let deletedIndex = items.firstIndex(where: { $0.id == id }) else { return }
+        let shouldRestartPageLoad = isLoadingPage
+        invalidatePageLoad()
         do {
             try store.deleteItem(id: id)
             items.remove(at: deletedIndex)
@@ -111,7 +127,9 @@ final class HistoryViewModel: ObservableObject {
                 let nextIndex = min(deletedIndex, items.count - 1)
                 selectedID = items[nextIndex].id
             }
+            restartPageLoadIfNeeded(shouldRestartPageLoad)
         } catch {
+            restartPageLoadIfNeeded(shouldRestartPageLoad)
             NSLog("MacPaste delete item failed: \(error.localizedDescription)")
         }
     }
@@ -159,6 +177,16 @@ final class HistoryViewModel: ObservableObject {
         let currentIndex = items.firstIndex(where: { $0.id == selectedID }) ?? 0
         let previousIndex = max(currentIndex - 1, 0)
         selectedID = items[previousIndex].id
+    }
+
+    private func invalidatePageLoad() {
+        pageLoadToken = UUID()
+        isLoadingPage = false
+    }
+
+    private func restartPageLoadIfNeeded(_ shouldRestart: Bool) {
+        guard shouldRestart, let lastItem = items.last else { return }
+        loadNextPageIfNeeded(currentItem: lastItem)
     }
 
     private func scheduleSearchReload() {

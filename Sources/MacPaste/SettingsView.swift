@@ -10,13 +10,19 @@ struct SettingsView: View {
                 .font(.system(size: 18, weight: .semibold))
 
             VStack(alignment: .leading, spacing: 12) {
-                Toggle(
-                    "开机自启",
-                    isOn: Binding(
-                        get: { settings.launchAtLoginEnabled },
-                        set: { settings.setLaunchAtLogin($0) }
+                HStack {
+                    Text("开机自启")
+                    Spacer()
+                    Toggle(
+                        "",
+                        isOn: Binding(
+                            get: { settings.launchAtLoginEnabled },
+                            set: { settings.setLaunchAtLogin($0) }
+                        )
                     )
-                )
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                }
 
                 if let error = settings.lastLaunchAtLoginError {
                     Text(error)
@@ -50,7 +56,7 @@ struct SettingsView: View {
                     Text("全局快捷键")
                     Spacer()
                     HotkeyRecorder(settings: settings)
-                        .frame(minWidth: 260)
+                        .frame(width: 200, alignment: .trailing)
                 }
 
                 HStack(alignment: .top) {
@@ -67,6 +73,13 @@ struct SettingsView: View {
                         settings.requestAccessibilityPermission()
                     }
                 }
+
+                HStack {
+                    Text("版本")
+                    Spacer()
+                    Text(appVersion)
+                        .foregroundStyle(.secondary)
+                }
             }
             .font(.system(size: 13))
 
@@ -74,6 +87,10 @@ struct SettingsView: View {
         }
         .padding(22)
         .frame(width: 500, height: 300)
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
     }
 
     private func retentionTitle(_ days: Int) -> String {

@@ -61,7 +61,7 @@ final class ClipboardMonitor {
             return
         }
 
-        if PasteboardGuard.shouldSuppress {
+        if PasteboardGuard.shouldSuppress(changeCount: currentChangeCount) {
             lastChangeCount = currentChangeCount
             return
         }

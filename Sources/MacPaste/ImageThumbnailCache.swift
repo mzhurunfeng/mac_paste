@@ -58,17 +58,15 @@ enum ImageThumbnailCache {
 }
 
 enum PasteboardGuard {
-    private static var suppressUntil: Date?
+    private static var suppressedChangeCount: Int?
 
-    static func suppress(for interval: TimeInterval = 1.0) {
-        suppressUntil = Date().addingTimeInterval(interval)
+    static func suppress(changeCount: Int) {
+        suppressedChangeCount = changeCount
     }
 
-    static var shouldSuppress: Bool {
-        if let suppressUntil, Date() < suppressUntil {
-            return true
-        }
-        self.suppressUntil = nil
-        return false
+    static func shouldSuppress(changeCount: Int) -> Bool {
+        guard let suppressedChangeCount else { return false }
+        self.suppressedChangeCount = nil
+        return changeCount == suppressedChangeCount
     }
 }

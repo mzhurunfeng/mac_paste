@@ -89,6 +89,24 @@ final class ClipboardStore {
         }
     }
 
+    func setFavorite(id: Int64, isFavorite: Bool) throws {
+        try queue.sync {
+            let sql = "UPDATE clipboard_items SET is_favorite = ? WHERE id = ?"
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+                throw StoreError.prepareFailed(message: lastErrorMessage)
+            }
+            defer { sqlite3_finalize(statement) }
+
+            sqlite3_bind_int(statement, 1, isFavorite ? 1 : 0)
+            sqlite3_bind_int64(statement, 2, id)
+
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw StoreError.writeFailed(message: lastErrorMessage)
+            }
+        }
+    }
+
     func deleteItem(id: Int64) throws {
         try queue.sync {
             let imagePath = try imagePathForItem(id: id)
@@ -130,6 +148,9 @@ final class ClipboardStore {
             clauses.append("type = ?")
             values.append(itemType.rawValue)
         }
+        if filter == .favorite {
+            clauses.append("is_favorite = 1")
+        }
 
         let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedQuery.isEmpty {
@@ -142,7 +163,7 @@ final class ClipboardStore {
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
         let sql = """
         SELECT id, type, title, text_content, image_path, created_at, char_count,
-               word_count, byte_size, width, height, content_hash, source_app_name
+               word_count, byte_size, width, height, content_hash, source_app_name, is_favorite
         FROM clipboard_items
         \(whereSQL)
         ORDER BY created_at DESC
@@ -187,7 +208,7 @@ final class ClipboardStore {
         let expiredImages = try imagePaths(before: cutoff)
 
         var statement: OpaquePointer?
-        let sql = "DELETE FROM clipboard_items WHERE created_at < ?"
+        let sql = "DELETE FROM clipboard_items WHERE created_at < ? AND is_favorite = 0"
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
             throw StoreError.prepareFailed(message: lastErrorMessage)
         }
@@ -199,7 +220,9 @@ final class ClipboardStore {
         }
 
         for path in expiredImages {
-            try? FileManager.default.removeItem(atPath: path)
+            if try !imagePathIsReferenced(path) {
+                try? FileManager.default.removeItem(atPath: path)
+            }
         }
     }
 
@@ -218,6 +241,7 @@ final class ClipboardStore {
         DELETE FROM clipboard_items
         WHERE id IN (
             SELECT id FROM clipboard_items
+            WHERE is_favorite = 0
             ORDER BY created_at DESC, id DESC
             LIMIT -1 OFFSET ?
         )
@@ -246,10 +270,10 @@ final class ClipboardStore {
     }
 
     private func enforceImageStorageLimitUnlocked(maxBytes: Int) throws {
-        var totalBytes = imageDirectoryBytes()
+        let images = try imageItemsOldestFirst()
+        var totalBytes = images.reduce(0) { $0 + $1.byteSize }
         guard totalBytes > maxBytes else { return }
 
-        let images = try imageItemsOldestFirst()
         for image in images {
             guard totalBytes > maxBytes else { break }
             try deleteItemUnlocked(id: image.id)
@@ -275,7 +299,8 @@ final class ClipboardStore {
             width INTEGER,
             height INTEGER,
             content_hash TEXT NOT NULL UNIQUE,
-            source_app_name TEXT
+            source_app_name TEXT,
+            is_favorite INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_clipboard_items_created_at
             ON clipboard_items(created_at DESC);
@@ -287,6 +312,7 @@ final class ClipboardStore {
             throw StoreError.migrationFailed(message: lastErrorMessage)
         }
         try addColumnIfNeeded(name: "source_app_name", definition: "TEXT")
+        try addColumnIfNeeded(name: "is_favorite", definition: "INTEGER NOT NULL DEFAULT 0")
     }
 
     private func addColumnIfNeeded(name: String, definition: String) throws {
@@ -318,7 +344,7 @@ final class ClipboardStore {
     }
 
     private func imagePaths(before cutoff: TimeInterval) throws -> [String] {
-        let sql = "SELECT image_path FROM clipboard_items WHERE created_at < ? AND image_path IS NOT NULL"
+        let sql = "SELECT image_path FROM clipboard_items WHERE created_at < ? AND is_favorite = 0 AND image_path IS NOT NULL"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
             throw StoreError.prepareFailed(message: lastErrorMessage)
@@ -344,8 +370,10 @@ final class ClipboardStore {
         let sql = """
         SELECT image_path FROM clipboard_items
         WHERE image_path IS NOT NULL
+          AND is_favorite = 0
           AND id IN (
               SELECT id FROM clipboard_items
+              WHERE is_favorite = 0
               ORDER BY created_at DESC, id DESC
               LIMIT -1 OFFSET ?
           )
@@ -375,7 +403,7 @@ final class ClipboardStore {
         let sql = """
         SELECT id, image_path, byte_size
         FROM clipboard_items
-        WHERE image_path IS NOT NULL
+        WHERE image_path IS NOT NULL AND is_favorite = 0
         ORDER BY created_at ASC
         """
         var statement: OpaquePointer?
@@ -400,23 +428,6 @@ final class ClipboardStore {
             throw StoreError.readFailed(message: lastErrorMessage)
         }
         return items
-    }
-
-    private func imageDirectoryBytes() -> Int {
-        guard let enumerator = FileManager.default.enumerator(
-            at: AppPaths.imageDirectory,
-            includingPropertiesForKeys: [.fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return 0
-        }
-
-        var total = 0
-        for case let url as URL in enumerator {
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            total += size
-        }
-        return total
     }
 
     private func deleteItemUnlocked(id: Int64) throws {
@@ -497,7 +508,8 @@ final class ClipboardStore {
             width: widthValue,
             height: heightValue,
             contentHash: contentHash,
-            sourceAppName: columnText(statement, 12)
+            sourceAppName: columnText(statement, 12),
+            isFavorite: sqlite3_column_int(statement, 13) != 0
         )
     }
 

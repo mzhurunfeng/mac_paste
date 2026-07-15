@@ -39,19 +39,37 @@ struct ClipboardPanelView: View {
     }
 
     private var toolbar: some View {
-        HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             TextField("搜索粘贴板内容...", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
                 .font(.system(size: 17, weight: .medium))
                 .focused($isSearchFocused)
 
-            Picker("", selection: $viewModel.filter) {
+            Divider()
+
+            HStack(spacing: 8) {
                 ForEach(ClipboardFilter.allCases) { filter in
-                    Text(filter.title).tag(filter)
+                    Button {
+                        viewModel.filter = filter
+                    } label: {
+                        Text(filter.title)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(viewModel.filter == filter ? Color.accentColor : Color.primary)
+                            .padding(.horizontal, 10)
+                            .frame(height: 24)
+                            .background(
+                                Capsule()
+                                    .fill(viewModel.filter == filter ? Color.accentColor.opacity(0.24) : Color.clear)
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.primary.opacity(viewModel.filter == filter ? 0 : 0.16))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
                 }
             }
-            .pickerStyle(.menu)
-            .frame(width: 132)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -75,21 +93,17 @@ struct ClipboardPanelView: View {
                         ForEach(items) { item in
                             HistoryRow(
                                 item: item,
-                                selected: item.id == viewModel.selectedID
+                                selected: item.id == viewModel.selectedID,
+                                onClick: {
+                                    isSearchFocused = false
+                                    viewModel.selectedID = item.id
+                                },
+                                onDoubleClick: { onPaste(item) },
+                                onFavoriteToggle: { viewModel.toggleFavorite(id: item.id) }
                             )
                             .equatable()
                             .id(item.id)
-                            .contentShape(Rectangle())
                             .padding(.horizontal, 8)
-                            .overlay(
-                                RowClickHandler(
-                                    onClick: {
-                                        isSearchFocused = false
-                                        viewModel.selectedID = item.id
-                                    },
-                                    onDoubleClick: { onPaste(item) }
-                                )
-                            )
                             .onAppear {
                                 viewModel.loadNextPageIfNeeded(currentItem: item)
                             }
@@ -112,6 +126,10 @@ struct ClipboardPanelView: View {
                 withAnimation(.easeOut(duration: 0.16)) {
                     proxy.scrollTo("history-list-top", anchor: .top)
                 }
+            }
+            .onChange(of: viewModel.selectedID) { selectedID in
+                guard let selectedID else { return }
+                proxy.scrollTo(selectedID)
             }
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.18))
@@ -181,6 +199,7 @@ struct ClipboardPanelView: View {
                         .font(.system(size: 12))
                 }
                 .buttonStyle(.borderless)
+                .pointingHandCursor()
             }
 
             InfoRow(label: "来源", value: item.sourceAppName?.isEmpty == false ? item.sourceAppName! : "-")
@@ -215,9 +234,13 @@ struct ClipboardPanelView: View {
 
 private struct HistoryRow: View, Equatable {
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
 
     let item: ClipboardItem
     let selected: Bool
+    let onClick: () -> Void
+    let onDoubleClick: () -> Void
+    let onFavoriteToggle: () -> Void
 
     static func == (lhs: HistoryRow, rhs: HistoryRow) -> Bool {
         lhs.item == rhs.item && lhs.selected == rhs.selected
@@ -232,6 +255,9 @@ private struct HistoryRow: View, Equatable {
                 .lineLimit(1)
 
             Spacer()
+
+            Color.clear
+                .frame(width: 28, height: 28)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
@@ -241,6 +267,25 @@ private struct HistoryRow: View, Equatable {
                 .fill(selectionBackground)
                 .opacity(selected ? 1 : 0)
         )
+        .overlay {
+            HStack(spacing: 0) {
+                RowClickHandler(onClick: onClick, onDoubleClick: onDoubleClick)
+
+                Button(action: onFavoriteToggle) {
+                    Image(systemName: item.isFavorite ? "star.fill" : "star")
+                        .font(.system(size: 13))
+                        .foregroundStyle(item.isFavorite ? Color.accentColor : Color.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .opacity(isHovered || item.isFavorite ? 1 : 0)
+                .allowsHitTesting(isHovered || item.isFavorite)
+                .help(item.isFavorite ? "取消收藏" : "收藏")
+            }
+        }
+        .onHover { isHovered = $0 }
+        .pointingHandCursor()
     }
 
     private var selectionBackground: Color {
@@ -302,6 +347,34 @@ private struct RowClickHandler: NSViewRepresentable {
                 coordinator?.onDoubleClick()
             }
         }
+    }
+}
+
+private struct PointingHandCursorModifier: ViewModifier {
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                guard hovering != isHovering else { return }
+                isHovering = hovering
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .onDisappear {
+                if isHovering {
+                    NSCursor.pop()
+                }
+            }
+    }
+}
+
+private extension View {
+    func pointingHandCursor() -> some View {
+        modifier(PointingHandCursorModifier())
     }
 }
 

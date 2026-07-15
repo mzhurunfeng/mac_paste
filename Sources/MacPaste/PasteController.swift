@@ -29,7 +29,7 @@ enum PasteController {
             return false
         }
 
-        PasteboardGuard.suppress()
+        PasteboardGuard.suppress(changeCount: pasteboard.changeCount)
 
         guard directPaste, AXIsProcessTrusted() else {
             return true

@@ -80,10 +80,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.button?.image = menuBarIcon()
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "显示粘贴板历史", action: #selector(showClipboardHistory), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "显示", action: #selector(showClipboardHistory), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "设置", action: #selector(showSettings), keyEquivalent: ","))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "关闭窗口", action: #selector(closeCurrentWindow), keyEquivalent: "w"))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "退出 MacPaste", action: #selector(quit), keyEquivalent: "q"))
         for item in menu.items {
@@ -116,7 +114,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.hotkeyManager?.register(keyCode: self.settings.hotkeyKeyCode, modifiers: self.settings.hotkeyModifiers)
         }
         settings.onRetentionChanged = { [weak self] policy in
-            self?.monitor?.cleanup(retentionPolicy: policy)
             self?.monitor?.start(retentionPolicy: policy)
         }
     }
@@ -131,16 +128,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
-    }
-
-    @objc private func closeCurrentWindow() {
-        if panel?.isVisible == true {
-            closeClipboardHistory()
-            return
-        }
-        if settingsWindow?.isVisible == true {
-            settingsWindow?.performClose(nil)
-        }
     }
 
     private func configureWorkspaceObserver() {

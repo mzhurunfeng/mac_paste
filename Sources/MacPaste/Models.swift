@@ -30,6 +30,7 @@ enum ClipboardItemType: String, CaseIterable, Codable, Identifiable {
 
 enum ClipboardFilter: String, CaseIterable, Identifiable {
     case all
+    case favorite
     case text
     case image
     case link
@@ -40,6 +41,7 @@ enum ClipboardFilter: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .all: "全部类型"
+        case .favorite: "收藏"
         case .text: "文本"
         case .image: "图片"
         case .link: "链接"
@@ -49,7 +51,7 @@ enum ClipboardFilter: String, CaseIterable, Identifiable {
 
     var itemType: ClipboardItemType? {
         switch self {
-        case .all: nil
+        case .all, .favorite: nil
         case .text: .text
         case .image: .image
         case .link: .link
@@ -72,6 +74,7 @@ struct ClipboardItem: Identifiable, Equatable {
     let height: Int?
     let contentHash: String
     let sourceAppName: String?
+    let isFavorite: Bool
 
     var displaySubtitle: String {
         let source = sourceAppName?.isEmpty == false ? sourceAppName! : "-"
